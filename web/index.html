@@ -1,0 +1,312 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Minesweeper Solver</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/* --dim was a shade too light to clear AA against --bg at these text sizes. */
+:root{--bg:#faf9f7;--fg:#1c1c1e;--dim:#716f77;--line:#e2e0dc;--card:#fff;
+--safe:#2e8b52;--warn:#c98a20;--risk:#c0392b;--accent:#2f6fb0}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#141417;--fg:#ededf0;
+--dim:#9b9aa1;--line:#3a3a44;--card:#1b1b20;--safe:#4fb573;--warn:#dfa63c;--risk:#e05a4c;--accent:#6fa3d8}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:740px;margin:0 auto;padding:36px 20px 56px}
+/* Scales with the viewport so the heading does not crowd a phone or look
+   undersized on a desktop. */
+h1{font-size:clamp(26px,4vw,32px);margin:0 0 9px;letter-spacing:-.024em;
+line-height:1.14;font-weight:700;color:var(--fg)}
+/* Accent to safe, the board's own colours. @supports so a browser without
+   background-clip falls through to the plain --fg set above. */
+@supports ((background-clip:text) or (-webkit-background-clip:text)){
+  h1{width:fit-content;
+  background:linear-gradient(101deg,var(--accent) 8%,var(--safe) 92%);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent}
+}
+/* The opening paragraph has to carry the whole premise, so it sits above body
+   size rather than below it, and darker than the other secondary text. */
+.lede{font-size:17px;line-height:1.5;margin:0 0 28px;max-width:54ch;
+color:#4a4a52}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .lede{color:#c2c1c9}}
+.bar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px}
+button,select{font:inherit;font-size:15px;padding:9px 16px;border:1px solid var(--line);
+background:var(--card);color:var(--fg);border-radius:9px;cursor:pointer;line-height:1.4}
+/* The native arrow sits badly against custom padding, so draw our own and
+   leave room for it on the right. */
+select{appearance:none;-webkit-appearance:none;padding-right:34px;
+background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),
+linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+background-position:calc(100% - 19px) 51%,calc(100% - 14px) 51%;
+background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+button:hover:not(:disabled),select:hover{border-color:var(--accent)}
+button:disabled{opacity:.4;cursor:default}
+button.go{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+/* overflow-x:auto clips on both axes, which would cut the ring on edge
+   squares. The padding gives it room; the negative margin cancels it. */
+.boardscroll{overflow-x:auto;margin:0 -4px 20px;padding:4px}
+/* Left-aligned, so a narrow board shares an edge with the heading above. */
+#board{display:grid;gap:3px;margin:0}
+.c{aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+border-radius:5px;font-weight:700;font-variant-numeric:tabular-nums;
+color:var(--fg);background:var(--line);transition:background .15s}
+/* Opened squares sit on the card colour so the number reads clearly against
+   the grey of everything still hidden. */
+/* Opened squares are flat and recessed, covered squares are raised. Without a
+   real difference the board reads as one undifferentiated grid. */
+.c.open{background:var(--card);box-shadow:inset 0 0 0 1px var(--line)}
+/* A zero is shown rather than left blank. Real Minesweeper leaves it empty,
+   but there the zeros cascade into one obvious region; here squares open one
+   at a time, so an isolated blank just looks like a square that failed. */
+.c.open.zero{color:var(--dim);font-weight:500;opacity:.5}
+.c.mine{background:var(--risk);color:#fff}
+.c.pick{box-shadow:0 0 0 3px var(--accent)}
+.tally{font-size:14.5px;color:var(--dim);margin:-8px 0 16px;font-variant-numeric:tabular-nums}
+.tally b{color:var(--fg);font-weight:600}
+.status{background:var(--card);border:1px solid var(--line);border-radius:11px;
+padding:15px 18px;min-height:74px;display:flex;flex-direction:column;justify-content:center}
+.status .what{font-size:16.5px;font-weight:600;margin-bottom:4px;letter-spacing:-.01em}
+.status .why{font-size:14.5px;color:var(--dim);line-height:1.5}
+.status.risk .what{color:var(--risk)}
+.status.done .what{color:var(--safe)}
+.status.dead .what{color:var(--risk)}
+.results{display:flex;gap:14px;flex-wrap:wrap;margin-top:22px}
+.r{flex:1 1 170px;background:var(--card);border:1px solid var(--line);
+border-radius:11px;padding:14px 16px}
+.r b{display:block;font-size:21px;font-weight:700;letter-spacing:-.018em;margin-bottom:3px}
+.r span{font-size:13.5px;color:var(--dim);line-height:1.45;display:block}
+.key{margin-top:22px}
+.keyrow{display:flex;align-items:center;gap:11px;max-width:320px}
+.keyrow .end{font-size:13.5px;color:var(--dim);white-space:nowrap}
+.ramp{flex:1;height:9px;border-radius:99px;
+background:linear-gradient(90deg,var(--safe),var(--warn),var(--risk))}
+.keynote{font-size:14px;color:var(--dim);margin:10px 0 0;max-width:60ch;line-height:1.5}
+</style>
+<div class="wrap">
+  <h1>Minesweeper Solver</h1>
+  <p class="lede">Each revealed number counts the mines in the eight squares
+    touching it. From those numbers this agent works out the exact chance that
+    every hidden square holds a mine, then opens the safest one. Sometimes no
+    square can be proved safe, and it has to gamble.</p>
+
+  <div class="bar">
+    <select id="preset">
+      <option value="8,8,10" selected>Easy &middot; 8&times;8, 10 mines</option>
+      <option value="16,16,40">Medium &middot; 16&times;16, 40 mines</option>
+      <option value="30,16,99">Hard &middot; 30&times;16, 99 mines</option>
+    </select>
+    <select id="speed">
+      <option value="1100">Slow</option>
+      <option value="600" selected>Normal</option>
+      <option value="150">Fast</option>
+    </select>
+    <button id="go" class="go">Watch it play</button>
+    <button id="step">One move</button>
+    <button id="new">New game</button>
+  </div>
+
+  <div class="boardscroll"><div id="board"></div></div>
+  <div class="tally" id="tally"></div>
+
+  <div id="status" class="status">
+    <div class="what" id="what">Ready</div>
+    <div class="why" id="why">Press "Watch it play"</div>
+  </div>
+
+  <div class="results">
+    <div class="r"><b>71.6%</b><span>of boards solved, over 12,000 games</span></div>
+    <div class="r"><b>87%</b><span>of its losses had no safe square available</span></div>
+    <div class="r"><b>&lt;100ms</b><span>worst case to choose a move</span></div>
+  </div>
+
+  <div class="key">
+    <div class="keyrow">
+      <span class="end">Safe</span>
+      <span class="ramp"></span>
+      <span class="end">Mine</span>
+    </div>
+    <p class="keynote">The shade of a hidden square is its chance of holding a
+      mine, worked out exactly. Solid green means proved safe, solid red means
+      proved to be a mine. Squares too far from any number to say anything about
+      are left grey, since every one of them carries the same odds. The blue
+      outline marks the square it just opened. Hover any square to read what it
+      is.</p>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let game=null, probs={}, pick=null, timer=null;
+
+const api=async(p,o)=>{
+  const r=await fetch(p,{headers:{'content-type':'application/json'},...o});
+  if(!r.ok){
+    const e=new Error((await r.json().catch(()=>({}))).detail||r.statusText);
+    e.status=r.status;   // the caller needs to tell a lost game from a dead server
+    throw e;
+  }
+  return r.json();
+};
+
+// Only squares touching a revealed number tell us anything. The rest all carry
+// the same odds, so colouring them just washes the board in one shade.
+function informative(x,y){
+  for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+    if(!dx&&!dy) continue;
+    const nx=x+dx, ny=y+dy;
+    if(nx<0||ny<0||nx>=game.width||ny>=game.height) continue;
+    if(game.grid[ny][nx]!==game.covered) return true;
+  }
+  return false;
+}
+
+function shade(p){
+  if(p<=.001) return 'var(--safe)';
+  if(p>=.999) return 'var(--risk)';
+  const h=p<.5 ? 128-(p/.5)*90 : 38-((p-.5)/.5)*26;
+  // Opacity floors at .5: below that a low-risk square washes out to nearly
+  // the background, next to a proved-safe one drawn solid.
+  return `hsl(${h} 58% 48% / ${.5+.4*p})`;
+}
+
+function draw(){
+  if(!game) return;
+  const b=$('#board');
+  // 8 and 16 wide fit the text column. 30 wide does not: it works out to
+  // 20px a square, too small to read, so it alone may exceed the column.
+  const GAP = 3, MAX = 62, DECENT = 30, MIN = 26, COLUMN = 700;
+  // From the viewport, not the container: the container is sized from this
+  // result below, so reading it here would feed back on every resize.
+  const room = Math.min(document.documentElement.clientWidth - 40, 1400);
+  const inColumn = Math.floor((Math.min(COLUMN, room) - (game.width - 1) * GAP) / game.width);
+  let cell;
+  if (inColumn >= DECENT) {
+    cell = Math.min(MAX, inColumn);
+  } else {
+    const wider = Math.floor((room - (game.width - 1) * GAP) / game.width);
+    cell = Math.max(MIN, Math.min(DECENT, wider));
+  }
+  // Fixed columns, not 1fr, so the width below is exact and can overflow.
+  b.style.gridTemplateColumns=`repeat(${game.width},${cell}px)`;
+  const boardW = game.width * cell + (game.width - 1) * GAP;
+  b.style.width = boardW + 'px';
+  // Column grows to the board so everything shares one left edge.
+  $('.wrap').style.maxWidth = Math.max(740, boardW + 40) + 'px';
+  // Scaled to the square, but capped: past about 20px the numbers stop reading
+  // as board markings and start looking like body text.
+  b.style.fontSize = Math.min(20, Math.round(cell * 0.5)) + 'px';
+  b.innerHTML='';
+  const mines=new Set([...(game.flags||[]),...(game.proved_mines||[])].map(c=>c.join(',')));
+  for(let y=0;y<game.height;y++) for(let x=0;x<game.width;x++){
+    const d=document.createElement('div'), key=`${x},${y}`, v=game.grid[y][x];
+    d.className='c';
+    if(mines.has(key)){ d.classList.add('mine'); d.textContent='!'; d.title='proved to be a mine'; }
+    else if(v===game.covered){
+      const p=probs[key];
+      if(p!==undefined && informative(x,y)){
+        d.style.background=shade(p);
+        d.title=p<=.001?'proved safe':`${(p*100).toFixed(0)}% chance of a mine`;
+      }
+    } else {
+      d.classList.add('open');
+      d.textContent=v;
+      d.title=v===0?'no mines touch this square':`${v} mine${v>1?'s':''} touch this square`;
+      if(v===0) d.classList.add('zero');
+    }
+    if(pick&&pick[0]===x&&pick[1]===y) d.classList.add('pick');
+    b.appendChild(d);
+  }
+  $('#step').disabled=game.over; $('#go').disabled=game.over;
+
+  $('#tally').innerHTML=
+    `<b>${game.uncovered}</b> of ${game.safe_cells} safe squares opened`+
+    ` &nbsp;&middot;&nbsp; <b>${mines.size}</b> of ${game.total_mines} mines found`;
+}
+
+function say(what,why,cls){
+  $('#status').className='status'+(cls?' '+cls:'');
+  $('#what').textContent=what; $('#why').textContent=why;
+}
+
+function report(s,st){
+  if(st.state==='won') return say('Solved','Every safe square opened without hitting a mine.','done');
+  if(st.state==='lost') return say('Hit a mine',
+    s.layer==='guess'?'It had no safe square left and the gamble lost.':'Opened a square it had proved safe.','dead');
+  if(s.layer==='guess'){
+    const m=s.headline.match(/at ([\d.]+)% risk/);
+    return say(`No safe square left, taking a ${m?m[1]:'?'}% risk`,
+      'Every remaining square could hold a mine. It picks the least dangerous one.','risk');
+  }
+  if(s.layer==='exact') return say('Worked it out the hard way',
+    'No simple rule applied, so it checked every possible arrangement of mines.');
+  if(s.layer==='local') return say('Proved a square from the numbers',
+    'The numbers nearby leave only one possibility.');
+  return say('Opening a square it already proved safe','Working through squares it worked out earlier.');
+}
+
+async function newGame(){
+  stop();
+  const [w,h,m]=$('#preset').value.split(',').map(Number);
+  try{
+    game=await api('/api/game',{method:'POST',body:JSON.stringify({width:w,height:h,mines:m})});
+  }catch(e){
+    // Without this a dead server leaves a blank page and no explanation.
+    return say('Cannot reach the solver',e.message,'dead');
+  }
+  probs={}; pick=null; draw(); say('Ready','Press "Watch it play"');
+}
+
+async function step(){
+  if(!game||game.over) return false;
+  try{
+    const r=await api(`/api/game/${game.game_id}/step`,{method:'POST'});
+    probs=r.probabilities||{}; pick=r.step.move.cell||null;
+    game={...game,...r}; draw(); report(r.step,game);
+    return !game.over;
+  }catch(e){
+    stop();
+    // Games live in server memory, so a 404 here means the session is gone
+    // (expired, or the instance was replaced). Not a fault worth alarming
+    // anyone about -- deal a fresh board.
+    if(e.status===404){
+      say('That game timed out','Starting a new one.');
+      await newGame();
+      return false;
+    }
+    say('Something went wrong',e.message,'dead');
+    return false;
+  }
+}
+
+function stop(){ if(timer){clearInterval(timer);timer=null;$('#go').textContent='Watch it play';} }
+
+$('#preset').onchange=newGame;
+$('#new').onclick=newGame;
+$('#step').onclick=step;
+function play(){
+  stop();
+  $('#go').textContent='Pause';
+  timer=setInterval(async()=>{ if(!await step()) stop(); }, Number($('#speed').value));
+}
+$('#speed').onchange=()=>{ if(timer) play(); };   // re-time without losing the game
+$('#go').onclick=()=>{ timer ? stop() : play(); };
+// Square size is derived from the column width, so it has to be recomputed
+// when the window changes.
+// The key is drawn from shade() itself rather than from a hand-written
+// gradient, so it shows the colours the board actually uses and cannot drift
+// out of step with them. It sits on --line because that is the colour a
+// covered square shows through.
+(function key(){
+  const bar = document.querySelector('.ramp');
+  if (!bar) return;
+  const stops = [];
+  for (let i = 0; i <= 20; i++) {
+    const p = i / 20;
+    stops.push(`${shade(p)} ${(p * 100).toFixed(0)}%`);
+  }
+  bar.style.backgroundColor = 'var(--line)';
+  bar.style.backgroundImage = `linear-gradient(90deg,${stops.join(',')})`;
+})();
+
+addEventListener('resize',()=>{ if(game) draw(); });
+newGame();
+</script>

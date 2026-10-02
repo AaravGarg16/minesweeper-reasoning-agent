@@ -1,0 +1,119 @@
+{
+  "benchmark": "minebench-v1",
+  "positions": 600,
+  "query_cells_per_position": 8,
+  "scoring": {
+    "skill": "share of the gap closed between the base-rate control (0) and the exact answer (1); negative means worse than ignoring the board",
+    "brier": "mean squared error against the exact probability, lower is better",
+    "ece": "expected calibration error, stated probability against actual, lower is better",
+    "overconfidence": "mean signed error; positive means the model calls cells more dangerous than they are",
+    "safe_recall": "of the cells that were provably safe, the share the model called safe",
+    "safe_precision": "of the cells a model called provably safe, the share that were",
+    "mine_recall": "of the cells that provably held a mine, the share the model called mined"
+  },
+  "note": "The no-thinking runs cover all 600 positions. The thinking runs cover the first 80 with reasoning effort bounded to low, which keeps every reply inside its token budget; every reply in those runs parsed, so none of them average over a subset the model happened to finish.",
+  "runs": [
+    {
+      "model": "claude-haiku-4-5",
+      "thinking": false,
+      "items": 600,
+      "parsed": 600,
+      "cells": 4781,
+      "skill": -1.4469477189715398,
+      "brier": 0.36284045788605374,
+      "base_brier": 0.14828288118822447,
+      "ece": 0.403812937247725,
+      "overconfidence": -0.3332,
+      "safe_recall": 0.7050691244239631,
+      "safe_precision": 0.244,
+      "mine_recall": 0.0867702196036422
+    },
+    {
+      "model": "claude-sonnet-5",
+      "thinking": false,
+      "items": 600,
+      "parsed": 536,
+      "cells": 4272,
+      "skill": -0.22536097471890715,
+      "brier": 0.18607471837223857,
+      "base_brier": 0.15185298227318147,
+      "ece": 0.19034973803120198,
+      "overconfidence": -0.17651313760040618,
+      "safe_recall": 0.038657171922685654,
+      "safe_precision": 0.35514018691588783,
+      "mine_recall": 0.19811320754716982
+    },
+    {
+      "model": "claude-opus-5",
+      "thinking": false,
+      "items": 600,
+      "parsed": 599,
+      "cells": 4773,
+      "skill": 0.2883361611471049,
+      "brier": 0.10560522196692494,
+      "base_brier": 0.14839200223682314,
+      "ece": 0.06709419420231494,
+      "overconfidence": -0.0629,
+      "safe_recall": 0.18433179723502305,
+      "safe_precision": 0.697,
+      "mine_recall": 0.38082485270487415
+    },
+    {
+      "model": "claude-haiku-4-5",
+      "thinking": true,
+      "items": 80,
+      "parsed": 80,
+      "cells": 640,
+      "skill": -0.7409759512399463,
+      "brier": 0.26952671131290684,
+      "base_brier": 0.154813575179454,
+      "ece": 0.2952129289063512,
+      "overconfidence": -0.28032751223968455,
+      "safe_recall": 0.46621621621621623,
+      "safe_precision": 0.27710843373493976,
+      "mine_recall": 0.09016393442622951
+    },
+    {
+      "model": "claude-sonnet-5",
+      "thinking": true,
+      "items": 80,
+      "parsed": 80,
+      "cells": 640,
+      "skill": 0.09818151905948647,
+      "brier": 0.13961374319730518,
+      "base_brier": 0.154813575179454,
+      "ece": 0.13396135112939225,
+      "overconfidence": -0.1257567109926471,
+      "safe_recall": 0.2972972972972973,
+      "safe_precision": 0.8979591836734694,
+      "mine_recall": 0.36065573770491804
+    },
+    {
+      "model": "claude-opus-5",
+      "thinking": true,
+      "items": 80,
+      "parsed": 80,
+      "cells": 640,
+      "skill": 0.9006175459870934,
+      "brier": 0.015385753015845743,
+      "base_brier": 0.154813575179454,
+      "ece": 0.011339492991336304,
+      "overconfidence": 0.0072537577573529135,
+      "safe_recall": 0.8243243243243243,
+      "safe_precision": 1.0,
+      "mine_recall": 0.9713114754098361
+    }
+  ],
+  "controls": [
+    {
+      "responder": "base-rate",
+      "skill": 0.0,
+      "note": "answers mines / covered for every cell, ignoring the board"
+    },
+    {
+      "responder": "oracle",
+      "skill": 1.0,
+      "note": "answers exactly; confirms a perfect score is reachable through the harness"
+    }
+  ]
+}
